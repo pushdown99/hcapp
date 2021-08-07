@@ -5,7 +5,6 @@ package systray
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"io"
 	"io/ioutil"
 	"os"
 	"log"
@@ -81,7 +80,7 @@ type wndClassEx struct {
 // Registers a window class for subsequent use in calls to the CreateWindow or CreateWindowEx function.
 // https://msdn.microsoft.com/en-us/library/ms633587.aspx
 func (w *wndClassEx) register() error {
-  log.Println("register")
+  //log.Println("register")
 	w.Size = uint32(unsafe.Sizeof(*w))
 	res, _, err := pRegisterClass.Call(uintptr(unsafe.Pointer(w)))
 	if res == 0 {
@@ -93,7 +92,7 @@ func (w *wndClassEx) register() error {
 // Unregisters a window class, freeing the memory required for the class.
 // https://msdn.microsoft.com/en-us/library/ms644899.aspx
 func (w *wndClassEx) unregister() error {
-  log.Println("unregister")
+  //log.Println("unregister")
 	res, _, err := pUnregisterClass.Call(
 		uintptr(unsafe.Pointer(w.ClassName)),
 		uintptr(w.Instance),
@@ -124,7 +123,7 @@ type notifyIconData struct {
 }
 
 func (nid *notifyIconData) add() error {
-  log.Printf("add")
+  //log.Printf("add")
 	const NIM_ADD = 0x00000000
 	res, _, err := pShellNotifyIcon.Call(
 		uintptr(NIM_ADD),
@@ -137,7 +136,7 @@ func (nid *notifyIconData) add() error {
 }
 
 func (nid *notifyIconData) modify() error {
-  log.Printf("modify")
+  //log.Printf("modify")
 	const NIM_MODIFY = 0x00000001
 	res, _, err := pShellNotifyIcon.Call(
 		uintptr(NIM_MODIFY),
@@ -150,7 +149,7 @@ func (nid *notifyIconData) modify() error {
 }
 
 func (nid *notifyIconData) delete() error {
-  log.Printf("delete")
+  //log.Printf("delete")
 	const NIM_DELETE = 0x00000002
 	res, _, err := pShellNotifyIcon.Call(
 		uintptr(NIM_DELETE),
@@ -215,7 +214,7 @@ type winTray struct {
 // Loads an image from file and shows it in tray.
 // Shell_NotifyIcon: https://msdn.microsoft.com/en-us/library/windows/desktop/bb762159(v=vs.85).aspx
 func (t *winTray) setIcon(src string) error {
-  log.Printf("setIcon")
+  //log.Printf("setIcon")
 	const NIF_ICON = 0x00000002
 
 	h, err := t.loadIconFrom(src)
@@ -235,7 +234,7 @@ func (t *winTray) setIcon(src string) error {
 // Sets tooltip on icon.
 // Shell_NotifyIcon: https://msdn.microsoft.com/en-us/library/windows/desktop/bb762159(v=vs.85).aspx
 func (t *winTray) setTooltip(src string) error {
-  log.Printf("setTooltip %v", src)
+  //log.Printf("setTooltip %v", src)
 	const NIF_TIP = 0x00000004
 	b, err := windows.UTF16FromString(src)
 	if err != nil {
@@ -256,7 +255,7 @@ var wt winTray
 // WindowProc callback function that processes messages sent to a window.
 // https://msdn.microsoft.com/en-us/library/windows/desktop/ms633573(v=vs.85).aspx
 func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam uintptr) (lResult uintptr) {
-  log.Printf("wndProc %x", message)
+  //log.Printf("wndProc %x", message)
 	const (
 		WM_RBUTTONUP  = 0x0205
 		WM_LBUTTONUP  = 0x0202
@@ -270,23 +269,23 @@ func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam ui
 	case WM_CREATE:
 		systrayReady()
 	case WM_COMMAND:
-    log.Printf("wndProc WM_COMMAND")
+    //log.Printf("wndProc WM_COMMAND")
 		menuItemId := int32(wParam)
 		// https://docs.microsoft.com/en-us/windows/win32/menurc/wm-command#menus
 		if menuItemId != -1 {
 			systrayMenuItemSelected(uint32(wParam))
 		}
 	case WM_CLOSE:
-    log.Printf("wndProc WM_CLOSE")
+    //log.Printf("wndProc WM_CLOSE")
 		pDestroyWindow.Call(uintptr(t.window))
 		t.wcex.unregister()
 	case WM_DESTROY:
-    log.Printf("wndProc WM_DESTROY")
+    //log.Printf("wndProc WM_DESTROY")
 		// same as WM_ENDSESSION, but throws 0 exit code after all
 		defer pPostQuitMessage.Call(uintptr(int32(0)))
 		fallthrough
 	case WM_ENDSESSION:
-    log.Printf("wndProc WM_ENDSESSION")
+    //log.Printf("wndProc WM_ENDSESSION")
 		t.muNID.Lock()
 		if t.nid != nil {
 			t.nid.delete()
@@ -294,18 +293,18 @@ func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam ui
 		t.muNID.Unlock()
 		systrayExit()
 	case t.wmSystrayMessage:
-    log.Printf("wndProc t.wmSystrayMessage")
+    //log.Printf("wndProc t.wmSystrayMessage")
 		switch lParam {
 		case WM_RBUTTONUP, WM_LBUTTONUP:
 			t.showMenu()
 		}
 	case t.wmTaskbarCreated: // on explorer.exe restarts
-    log.Printf("wndProc t.wmTaskbarCreated")
+    //log.Printf("wndProc t.wmTaskbarCreated")
 		t.muNID.Lock()
 		t.nid.add()
 		t.muNID.Unlock()
 	default:
-    log.Printf("wndProc default")
+    //log.Printf("wndProc default")
 		// Calls the default window procedure to provide default processing for any window messages that an application does not process.
 		// https://msdn.microsoft.com/en-us/library/windows/desktop/ms633572(v=vs.85).aspx
 		lResult, _, _ = pDefWindowProc.Call(
@@ -320,6 +319,7 @@ func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam ui
 
 func (t *winTray) initInstance() error {
 
+  /*
   LOG_FILE := "c:\\hc\\hancom.log"
   fp, err := os.OpenFile(LOG_FILE, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
   if err != nil {
@@ -329,9 +329,10 @@ func (t *winTray) initInstance() error {
   multiWriter := io.MultiWriter(fp, os.Stdout)
   log.SetOutput(multiWriter)
   log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+  */
 
 
-  log.Println("initinstance")
+  //log.Println("initinstance")
 	const IDI_APPLICATION = 32512
 	const IDC_ARROW = 32512 // Standard arrow
 	// https://msdn.microsoft.com/en-us/library/windows/desktop/ms633548(v=vs.85).aspx
@@ -464,7 +465,7 @@ func (t *winTray) initInstance() error {
 }
 
 func (t *winTray) createMenu() error {
-  log.Printf("createMenu")
+  //log.Printf("createMenu")
 	const MIM_APPLYTOSUBMENUS = 0x80000000 // Settings apply to the menu and all of its submenus
 
 	menuHandle, _, err := pCreatePopupMenu.Call()
@@ -495,7 +496,7 @@ func (t *winTray) createMenu() error {
 }
 
 func (t *winTray) convertToSubMenu(menuItemId uint32) (windows.Handle, error) {
-  log.Printf("convertToSubMenu")
+  //log.Printf("convertToSubMenu")
 	const MIIM_SUBMENU = 0x00000004
 
 	res, _, err := pCreateMenu.Call()
@@ -525,7 +526,7 @@ func (t *winTray) convertToSubMenu(menuItemId uint32) (windows.Handle, error) {
 }
 
 func (t *winTray) addOrUpdateMenuItem(menuItemId uint32, parentId uint32, title string, disabled, checked bool) error {
-  log.Printf("addOrUpdateMenuItem")
+  //log.Printf("addOrUpdateMenuItem")
 	// https://msdn.microsoft.com/en-us/library/windows/desktop/ms647578(v=vs.85).aspx
 	const (
 		MIIM_FTYPE   = 0x00000100
@@ -611,7 +612,7 @@ func (t *winTray) addOrUpdateMenuItem(menuItemId uint32, parentId uint32, title 
 }
 
 func (t *winTray) addSeparatorMenuItem(menuItemId, parentId uint32) error {
-  log.Printf("addSeparatorMenuItem")
+  //log.Printf("addSeparatorMenuItem")
 	// https://msdn.microsoft.com/en-us/library/windows/desktop/ms647578(v=vs.85).aspx
 	const (
 		MIIM_FTYPE = 0x00000100
@@ -647,7 +648,7 @@ func (t *winTray) addSeparatorMenuItem(menuItemId, parentId uint32) error {
 }
 
 func (t *winTray) hideMenuItem(menuItemId, parentId uint32) error {
-  log.Printf("hideMenuItem")
+  //log.Printf("hideMenuItem")
 	// https://msdn.microsoft.com/en-us/library/windows/desktop/ms647629(v=vs.85).aspx
 	const MF_BYCOMMAND = 0x00000000
 	const ERROR_SUCCESS syscall.Errno = 0
@@ -669,7 +670,7 @@ func (t *winTray) hideMenuItem(menuItemId, parentId uint32) error {
 }
 
 func (t *winTray) showMenu() error {
-  log.Printf("showMenu")
+  //log.Printf("showMenu")
 	const (
 		TPM_BOTTOMALIGN = 0x0020
 		TPM_LEFTALIGN   = 0x0000
@@ -698,7 +699,7 @@ func (t *winTray) showMenu() error {
 }
 
 func (t *winTray) delFromVisibleItems(parent, val uint32) {
-  log.Printf("delFromVisibleItems")
+  //log.Printf("delFromVisibleItems")
 	t.muVisibleItems.Lock()
 	defer t.muVisibleItems.Unlock()
 	visibleItems := t.visibleItems[parent]
@@ -711,7 +712,7 @@ func (t *winTray) delFromVisibleItems(parent, val uint32) {
 }
 
 func (t *winTray) addToVisibleItems(parent, val uint32) {
-  log.Printf("addToVisibleItems")
+  //log.Printf("addToVisibleItems")
 	t.muVisibleItems.Lock()
 	defer t.muVisibleItems.Unlock()
 	if visibleItems, exists := t.visibleItems[parent]; !exists {
@@ -724,7 +725,7 @@ func (t *winTray) addToVisibleItems(parent, val uint32) {
 }
 
 func (t *winTray) getVisibleItemIndex(parent, val uint32) int {
-  log.Printf("getVisibleItemIndex")
+  //log.Printf("getVisibleItemIndex")
 	t.muVisibleItems.RLock()
 	defer t.muVisibleItems.RUnlock()
 	for i, itemval := range t.visibleItems[parent] {
@@ -738,7 +739,7 @@ func (t *winTray) getVisibleItemIndex(parent, val uint32) int {
 // Loads an image from file to be shown in tray or menu item.
 // LoadImage: https://msdn.microsoft.com/en-us/library/windows/desktop/ms648045(v=vs.85).aspx
 func (t *winTray) loadIconFrom(src string) (windows.Handle, error) {
-  log.Printf("loadIconFrom: %v", src)
+  //log.Printf("loadIconFrom: %v", src)
 	const IMAGE_ICON = 1               // Loads an icon
 	const LR_LOADFROMFILE = 0x00000010 // Loads the stand-alone image from the file
 	const LR_DEFAULTSIZE = 0x00000040  // Loads default-size icon for windows(SM_CXICON x SM_CYICON) if cx, cy are set to zero
@@ -748,14 +749,14 @@ func (t *winTray) loadIconFrom(src string) (windows.Handle, error) {
 	h, ok := t.loadedImages[src]
 	t.muLoadedImages.RUnlock()
 	if !ok {
-    log.Printf("loadIconFrom: t.loadedImages[src] ok == false")
+    //log.Printf("loadIconFrom: t.loadedImages[src] ok == false")
 		srcPtr, err := windows.UTF16PtrFromString(src)
 		if err != nil {
-      log.Printf("loadIconFrom: windows.UTF16PtrFromString.Call err: %v", err)
+      //log.Printf("loadIconFrom: windows.UTF16PtrFromString.Call err: %v", err)
 			return 0, err
 		}
-    log.Printf("loadIconFrom: windows.UTF16PtrFromString src: %v, srcPtr:%v", src, srcPtr)
-    log.Printf("loadIconFrom: pLoadImage.Call")
+    //log.Printf("loadIconFrom: windows.UTF16PtrFromString src: %v, srcPtr:%v", src, srcPtr)
+    //log.Printf("loadIconFrom: pLoadImage.Call")
 		res, _, err := pLoadImage.Call(
 			0,
 			uintptr(unsafe.Pointer(srcPtr)),
@@ -764,31 +765,31 @@ func (t *winTray) loadIconFrom(src string) (windows.Handle, error) {
 			0,
 			LR_LOADFROMFILE|LR_DEFAULTSIZE,
 		)
-    log.Printf("loadIconFrom: pLoadImage.Call res: %v", res)
+    //log.Printf("loadIconFrom: pLoadImage.Call res: %v", res)
 		if res == 0 {
-      log.Printf("loadIconFrom: pLoadImage.Call res = 0, err: %v", err)
+      //log.Printf("loadIconFrom: pLoadImage.Call res = 0, err: %v", err)
 			return 0, err
 		}
     /*
   res, _, err := pLoadIcon.Call(0, uintptr(100))
   if res == 0 {
-      log.Printf("loadIconFrom: pLoadImage.Call res = 0, err: %v", err)
+      //log.Printf("loadIconFrom: pLoadImage.Call res = 0, err: %v", err)
     return 0,err
   }
   */
 		h = windows.Handle(res)
-    log.Printf("loadIconFrom: windows.Handle res: %v, h: %v", res, h)
+    //log.Printf("loadIconFrom: windows.Handle res: %v, h: %v", res, h)
 		t.muLoadedImages.Lock()
 		t.loadedImages[src] = h
 		t.muLoadedImages.Unlock()
 	} else {
-    log.Printf("loadIconFrom: t.loadedImages[src] ok == true")
+    //log.Printf("loadIconFrom: t.loadedImages[src] ok == true")
   }
 	return h, nil
 }
 
 func (t *winTray) iconToBitmap(hIcon windows.Handle) (windows.Handle, error) {
-  log.Printf("iconToBitmap")
+  //log.Printf("iconToBitmap")
 	const SM_CXSMICON = 49
 	const SM_CYSMICON = 50
 	const DI_NORMAL = 0x3
@@ -818,21 +819,21 @@ func (t *winTray) iconToBitmap(hIcon windows.Handle) (windows.Handle, error) {
 }
 
 func registerSystray() {
-  log.Printf("registerSystray")
+  //log.Printf("registerSystray")
 	if err := wt.initInstance(); err != nil {
-		log.Printf("Unable to init instance: %v", err)
+		//log.Printf("Unable to init instance: %v", err)
 		return
 	}
 
 	if err := wt.createMenu(); err != nil {
-		log.Printf("Unable to create menu: %v", err)
+		//log.Printf("Unable to create menu: %v", err)
 		return
 	}
 
 }
 
 func nativeLoop() {
-  log.Printf("nativeLoop")
+  //log.Printf("nativeLoop")
 	// Main message pump.
 	m := &struct {
 		WindowHandle windows.Handle
@@ -863,7 +864,7 @@ func nativeLoop() {
 }
 
 func quit() {
-  log.Printf("quit")
+  //log.Printf("quit")
 	const WM_CLOSE = 0x0010
 
 	pPostMessage.Call(
@@ -875,7 +876,7 @@ func quit() {
 }
 
 func iconBytesToFilePath(iconBytes []byte) (string, error) {
-  log.Printf("iconBytesToFilePath")
+  //log.Printf("iconBytesToFilePath")
 	bh := md5.Sum(iconBytes)
 	dataHash := hex.EncodeToString(bh[:])
 	iconFilePath := filepath.Join(os.TempDir(), "systray_temp_icon_"+dataHash)
@@ -892,14 +893,14 @@ func iconBytesToFilePath(iconBytes []byte) (string, error) {
 // iconBytes should be the content of .ico for windows and .ico/.jpg/.png
 // for other platforms.
 func SetIcon(iconBytes []byte) {
-  log.Printf("SetIcon")
+  //log.Printf("SetIcon")
 	iconFilePath, err := iconBytesToFilePath(iconBytes)
 	if err != nil {
-		log.Printf("Unable to write icon data to temp file: %v", err)
+		//log.Printf("Unable to write icon data to temp file: %v", err)
 		return
 	}
 	if err := wt.setIcon(iconFilePath); err != nil {
-		log.Printf("Unable to set icon: %v", err)
+		//log.Printf("Unable to set icon: %v", err)
 		return
 	}
 }
@@ -909,7 +910,7 @@ func SetIcon(iconBytes []byte) {
 // templateIconBytes and iconBytes should be the content of .ico for windows and
 // .ico/.jpg/.png for other platforms.
 func SetTemplateIcon(templateIconBytes []byte, regularIconBytes []byte) {
-  log.Printf("SetTemplateIcon")
+  //log.Printf("SetTemplateIcon")
 	SetIcon(regularIconBytes)
 }
 
@@ -919,7 +920,7 @@ func SetTitle(title string) {
 }
 
 func (item *MenuItem) parentId() uint32 {
-  log.Printf("parentId")
+  //log.Printf("parentId")
 	if item.parent != nil {
 		return uint32(item.parent.id)
 	}
@@ -929,23 +930,23 @@ func (item *MenuItem) parentId() uint32 {
 // SetIcon sets the icon of a menu item. Only works on macOS and Windows.
 // iconBytes should be the content of .ico/.jpg/.png
 func (item *MenuItem) SetIcon(iconBytes []byte) {
-  log.Printf("SetIcon")
+  //log.Printf("SetIcon")
 	iconFilePath, err := iconBytesToFilePath(iconBytes)
 	if err != nil {
-		log.Printf("Unable to write icon data to temp file: %v", err)
+		//log.Printf("Unable to write icon data to temp file: %v", err)
 		return
 	}
 
   //iconFilePath = string("c:\\hc\\hancom.ico")
 	h, err := wt.loadIconFrom(iconFilePath)
 	if err != nil {
-		log.Printf("Unable to load icon from temp file: %v", err)
+		//log.Printf("Unable to load icon from temp file: %v", err)
 		return
 	}
 
 	h, err = wt.iconToBitmap(h)
 	if err != nil {
-		log.Printf("Unable to convert icon to bitmap: %v", err)
+		//log.Printf("Unable to convert icon to bitmap: %v", err)
 		return
 	}
 	wt.muMenuItemIcons.Lock()
@@ -954,7 +955,7 @@ func (item *MenuItem) SetIcon(iconBytes []byte) {
 
 	err = wt.addOrUpdateMenuItem(uint32(item.id), item.parentId(), item.title, item.disabled, item.checked)
 	if err != nil {
-		log.Printf("Unable to addOrUpdateMenuItem: %v", err)
+		//log.Printf("Unable to addOrUpdateMenuItem: %v", err)
 		return
 	}
 }
@@ -962,18 +963,18 @@ func (item *MenuItem) SetIcon(iconBytes []byte) {
 // SetTooltip sets the systray tooltip to display on mouse hover of the tray icon,
 // only available on Mac and Windows.
 func SetTooltip(tooltip string) {
-  log.Printf("SetTooltip")
+  //log.Printf("SetTooltip")
 	if err := wt.setTooltip(tooltip); err != nil {
-		log.Printf("Unable to set tooltip: %v", err)
+		//log.Printf("Unable to set tooltip: %v", err)
 		return
 	}
 }
 
 func addOrUpdateMenuItem(item *MenuItem) {
-  log.Printf("addOrUpdateMenuItem")
+  //log.Printf("addOrUpdateMenuItem")
 	err := wt.addOrUpdateMenuItem(uint32(item.id), item.parentId(), item.title, item.disabled, item.checked)
 	if err != nil {
-		log.Printf("Unable to addOrUpdateMenuItem: %v", err)
+		//log.Printf("Unable to addOrUpdateMenuItem: %v", err)
 		return
 	}
 }
@@ -987,24 +988,24 @@ func (item *MenuItem) SetTemplateIcon(templateIconBytes []byte, regularIconBytes
 }
 
 func addSeparator(id uint32) {
-  log.Printf("addSeparator")
+  //log.Printf("addSeparator")
 	err := wt.addSeparatorMenuItem(id, 0)
 	if err != nil {
-		log.Printf("Unable to addSeparator: %v", err)
+		//log.Printf("Unable to addSeparator: %v", err)
 		return
 	}
 }
 
 func hideMenuItem(item *MenuItem) {
-  log.Printf("hideMenuItem")
+  //log.Printf("hideMenuItem")
 	err := wt.hideMenuItem(uint32(item.id), item.parentId())
 	if err != nil {
-		log.Printf("Unable to hideMenuItem: %v", err)
+		//log.Printf("Unable to hideMenuItem: %v", err)
 		return
 	}
 }
 
 func showMenuItem(item *MenuItem) {
-  log.Printf("showMenuItem")
+  //log.Printf("showMenuItem")
 	addOrUpdateMenuItem(item)
 }
