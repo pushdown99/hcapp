@@ -12,6 +12,7 @@ require (
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 	hancom.com/icon v0.0.0
+	hancom.com/serial v0.0.0
 	hancom.com/systray v0.0.0
 	hancom.com/utils v0.0.0
 	hancom.com/websocket v0.0.0
@@ -19,6 +20,7 @@ require (
 
 replace (
 	hancom.com/icon v0.0.0 => ./icon
+	hancom.com/serial v0.0.0 => ./serial
 	hancom.com/systray v0.0.0 => ./systray
 	hancom.com/utils v0.0.0 => ./utils
 	hancom.com/websocket v0.0.0 => ./websocket

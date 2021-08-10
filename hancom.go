@@ -9,6 +9,7 @@ import (
   "fmt"
 	"sync"
 	"time"
+	"errors"
 	"runtime"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
   "hancom.com/systray"
   "hancom.com/icon"
   "hancom.com/utils"
+  "hancom.com/serial"
   "hancom.com/websocket"
 
 	"github.com/fatih/color"
@@ -139,11 +141,11 @@ func (goWindowsService *GoWindowsService) run() {
     wg.Wait()
 
   } else if strings.ToUpper(posType) == "COM" {
-    in := utils.OpenCOM(Port1, baudrate, intchtmo, minreadsize)
+    in := OpenCOM(Port1, baudrate, intchtmo, minreadsize)
     if in == nil {
       return
     }
-    out := utils.OpenCOM(Printer, baudrate, intchtmo, minreadsize)
+    out := OpenCOM(Printer, baudrate, intchtmo, minreadsize)
     if out == nil {
       return
     }
@@ -166,17 +168,13 @@ func (goWindowsService *GoWindowsService) run() {
 
     wg.Wait()
   } else {
-    com := utils.OpenCOM(Port1, baudrate, intchtmo, minreadsize)
+    com := OpenCOM(Port1, baudrate, intchtmo, minreadsize)
     if com == nil {
-      return
-    }
-    prn, err := os.OpenFile(Printer, os.O_RDWR, 0666)
-    if err != nil {
       return
     }
     wg.Add(5)
 
-    go RunLPT(com, prn, Port1, Printer)
+    go RunLPT(com, Port1, Printer)
 
     if wsHost == "" {
       HeartBeat()
@@ -324,10 +322,60 @@ func Extract() {
 	}
 }
 
+func readWithTimeout(r io.Reader, n int, tmo int) ([]byte, int, error) {
+  var nb int = -1
+	buf := make([]byte, n)
+	done := make(chan error)
+	readAndCallBack := func() {
+		nbyte, err := io.ReadAtLeast(r, buf, n)
+    nb = nbyte
+		done <- err
+	}
+
+	go readAndCallBack()
+
+	timeout := make(chan bool)
+	sleepAndCallBack := func() { time.Sleep(2e9); timeout <- true }
+	go sleepAndCallBack()
+
+	select {
+	case err := <-done:
+		return buf, nb, err
+	case <-timeout:
+		return nil, 0, errors.New("Timed out.")
+	}
+
+	return nil, -1, errors.New("Can't get here.")
+}
+
+func OpenCOM(device string, baudrate int, intchtmo int, minreadsize int) io.ReadWriteCloser {
+  options := serial.OpenOptions{
+    PortName:              device,
+    BaudRate:              uint(baudrate),
+    DataBits:              8,
+    StopBits:              1,
+    InterCharacterTimeout: uint(intchtmo),    //msec
+    MinimumReadSize:       uint(minreadsize), //4
+  }
+  port, err := serial.Open(options)
+  if err != nil {
+    color.Set(color.FgRed)
+    log.Printf("[x] %s serial.Open: %v", device, err)
+    color.Set(color.FgWhite)
+    return nil
+  }
+  return port
+}
+
 func RunCOM(in io.ReadWriteCloser, out io.ReadWriteCloser, port1 string, port2 string) {
   color.Set(color.FgGreen)
   log.Printf("[v] thread RunCOM (%s => %s)", port1, port2)
   color.Set(color.FgWhite)
+	//minreadsize, _ := strconv.Atoi(minReadSize)
+	//intchtmo, _ := strconv.Atoi(intChTimeout)
+
+  //buf := make([]byte, 32768)
+
   for {
     buf := make([]byte, 32768)
     n, err := in.Read(buf)
@@ -339,8 +387,8 @@ func RunCOM(in io.ReadWriteCloser, out io.ReadWriteCloser, port1 string, port2 s
         color.Set(color.FgWhite)
       }
     } else {
-      buf = buf[:n]
       if n > 0 {
+        buf = buf[:n]
         log.Printf("[-] read %s  %d bytes, %s", port1, n, hex.EncodeToString(buf))
         nb, _ := out.Write(buf)
         log.Printf("[-] write %s %d bytes %s", port2, nb, hex.EncodeToString(buf))
@@ -351,10 +399,13 @@ func RunCOM(in io.ReadWriteCloser, out io.ReadWriteCloser, port1 string, port2 s
   }
 }
 
-func RunLPT(in io.ReadWriteCloser, out *os.File, port1 string, port2 string) {
+func RunLPT(in io.ReadWriteCloser, port1 string, port2 string) {
   color.Set(color.FgGreen)
   log.Printf("[v] thread RunLPT (%s => %s)", port1, port2)
   color.Set(color.FgWhite)
+
+  //buf := make([]byte, 32768)
+
   for {
     buf := make([]byte, 32768)
     n, err := in.Read(buf)
@@ -366,10 +417,13 @@ func RunLPT(in io.ReadWriteCloser, out *os.File, port1 string, port2 string) {
         color.Set(color.FgWhite)
       }
     } else {
-      buf = buf[:n]
       if n > 0 {
+        buf = buf[:n]
         log.Printf("[-] read %s  %d bytes, %s", port1, n, hex.EncodeToString(buf))
+        out, _ := os.OpenFile(port2, os.O_RDWR, 0666)
         nb, _ := out.Write(buf)
+        out.Sync()
+        out.Close()
         log.Printf("[-] write %s %d bytes %s", port2, nb, hex.EncodeToString(buf))
         PostReceipt(buf)
       }
