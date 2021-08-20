@@ -86,7 +86,7 @@ func (goWindowsService *GoWindowsService) Start(windowsService service.Service) 
 	color.Set(color.FgHiWhite)
 	osArch = runtime.GOOS + "/" + runtime.GOARCH
 	log.Println("#")
-	log.Printf("# POS Agent Started! (%s)", osArch)
+	log.Printf("# POS Agent Started! (%s, %d)", osArch, os.Getpid())
 	log.Println("#")
 	color.Set(color.FgWhite)
 
@@ -95,6 +95,11 @@ func (goWindowsService *GoWindowsService) Start(windowsService service.Service) 
 	log.Println("[v]", gi)
 	osInfo = string(gi.Kernel + "/" + gi.Core)
 	log.Println("")
+
+  sp := strings.Split(gi.Core, ".")
+  osVersion, _ := strconv.Atoi(sp[0])
+
+  log.Println("[v]", gi.Core, osVersion)
 
 	if _, err := os.Stat("C:\\Program Files (x86)"); !os.IsNotExist(err) {
 		osInfo += " (64bit)"
@@ -119,34 +124,59 @@ func (goWindowsService *GoWindowsService) Start(windowsService service.Service) 
 func (goWindowsService *GoWindowsService) run() {
 	baudrate, _ := strconv.Atoi(baudRate)
 	intchtmo, _ := strconv.Atoi(intChTimeout)
-	minreadsize, _ := strconv.Atoi(minReadSize)
+	//minreadsize, _ := strconv.Atoi(minReadSize)
+  var qrscan io.ReadWriteCloser
+	minreadsize := 0
 
   wg := sync.WaitGroup{}
 
-  if strings.ToUpper(posType) == "BNK" {
+
+  if qrPort != "" {
+    qrrate, _ := strconv.Atoi(qrRate)
+    qrscan = OpenCOM(qrPort, qrrate, intchtmo, minreadsize)
+    if qrscan == nil {
+		  color.Set(color.FgRed)
+      log.Printf("[x] QR scanner open error:", qrPort)
+		  color.Set(color.FgWhite)
+      return
+    }
+    go RunQR (qrscan, qrPort)
+  }
+
+  switch strings.ToUpper(posType) {
+  case "BNK":
+    log.Printf("[s] Service Type: BNK")
     wg.Add(5)
     go Extract()
 
-    if wsHost == "" {
+    if servName == "BOOKPOINT" {
+      log.Printf("[s] Service Name: BookPoint")
       CheckIn()
       HeartBeat()
     } else {
+      log.Printf("[s] Service Name: Receipt")
       SignIn()
       WS()
       PosHeartBeat()
-      if(osVersion >= 6) {
-        SysTray()
-      }
+      SysTray()
     }
     wg.Wait()
+    break;
 
-  } else if strings.ToUpper(posType) == "COM" {
+  case "COM":
+    log.Printf("[s] Service Type: COM")
     in := OpenCOM(Port1, baudrate, intchtmo, minreadsize)
     if in == nil {
+		  color.Set(color.FgRed)
+      log.Printf("[x] Port1 open error:", Port1)
+		  color.Set(color.FgWhite)
       return
     }
     out := OpenCOM(Printer, baudrate, intchtmo, minreadsize)
     if out == nil {
+		  color.Set(color.FgRed)
+      log.Printf("[x] Printer port open error:", Printer)
+		  color.Set(color.FgWhite)
       return
     }
 
@@ -154,39 +184,44 @@ func (goWindowsService *GoWindowsService) run() {
     go RunCOM(in, out, Port1, Printer)
     go RunCOM(out, in, Printer, Port1)
 
-    if wsHost == "" {
+    if servName == "BOOKPOINT" {
+      log.Printf("[s] Service Name: BookPoint")
       CheckIn()
       HeartBeat()
     } else {
+      log.Printf("[s] Service Name: Receipt")
       SignIn()
       WS()
       PosHeartBeat()
-      if(osVersion >= 6) {
-        SysTray()
-      }
+      SysTray()
     }
-
     wg.Wait()
-  } else {
+
+  case "LPT":
+  default:
+    log.Printf("[s] Service Type: LPT")
     com := OpenCOM(Port1, baudrate, intchtmo, minreadsize)
     if com == nil {
+		  color.Set(color.FgRed)
+      log.Printf("[x] Port1 open error:", Port1)
+		  color.Set(color.FgWhite)
       return
     }
     wg.Add(5)
-
     go RunLPT(com, Port1, Printer)
 
-    if wsHost == "" {
-      HeartBeat()
+    if servName == "BOOKPOINT" {
+      log.Printf("[s] Service Name: BookPoint")
       CheckIn()
+      HeartBeat()
     } else {
+      log.Printf("[s] Service Name: Receipt")
       SignIn()
       WS()
       PosHeartBeat()
-      if(osVersion >= 6) {
-        SysTray()
-      }
+      SysTray()
     }
+    wg.Wait()
   }
 }
 
@@ -253,6 +288,17 @@ type JsonPost struct {
 	Timestamp int64
 }
 
+func IssueQRcode (qrcode string) {
+	resp, err := http.Get(httpHost+"/issue/"+license+"/"+qrcode)
+	if err != nil {
+		color.Set(color.FgRed)
+		log.Printf("[x] Http Issue QRcode error: ", err)
+		color.Set(color.FgWhite)
+	} else {
+		log.Printf("[-] Http response: %d", resp.StatusCode)
+	}
+}
+
 func PostReceiptUid(buf []byte) {
 	b, _ := json.Marshal(JsonPost{Data: hex.EncodeToString(buf), Timestamp: time.Now().Unix()})
 	resp, err := http.Post(httpHost+"/receipt/probe/"+uidNum, "application/json", bytes.NewBuffer(b))
@@ -284,7 +330,7 @@ func PostReceipt(buf []byte) {
 		PostReceiptUid(buf)
 	} else {
 		PostReceiptLicense(buf)
-	}
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -371,11 +417,6 @@ func RunCOM(in io.ReadWriteCloser, out io.ReadWriteCloser, port1 string, port2 s
   color.Set(color.FgGreen)
   log.Printf("[v] thread RunCOM (%s => %s)", port1, port2)
   color.Set(color.FgWhite)
-	//minreadsize, _ := strconv.Atoi(minReadSize)
-	//intchtmo, _ := strconv.Atoi(intChTimeout)
-
-  //buf := make([]byte, 32768)
-
   for {
     buf := make([]byte, 32768)
     n, err := in.Read(buf)
@@ -389,10 +430,30 @@ func RunCOM(in io.ReadWriteCloser, out io.ReadWriteCloser, port1 string, port2 s
     } else {
       if n > 0 {
         buf = buf[:n]
+        log.Printf("[-] wsHost %s, qrCode %s", wsHost, qrCode)
         log.Printf("[-] read %s  %d bytes, %s", port1, n, hex.EncodeToString(buf))
-        nb, _ := out.Write(buf)
-        log.Printf("[-] write %s %d bytes %s", port2, nb, hex.EncodeToString(buf))
-        PostReceipt(buf)
+
+        if servName == "BOOKPOINT" {
+          PostReceipt(buf)        /* Post Receipt */
+          log.Printf("[-] post %s  %d bytes, %s", port1, n, hex.EncodeToString(buf))
+          nb, _ := out.Write(buf) /* write printer */
+          log.Printf("[-] write %s %d bytes %s", port2, nb, hex.EncodeToString(buf))
+        } else {
+          if qrCode != "" {
+            PostReceipt(buf) /* Post Receipt */
+            s := hex.EncodeToString(buf)
+            if strings.Contains(s, "1b69") || strings.Contains(s, "1b6d") || strings.Contains(s, "1d6b7315") || strings.Contains(s, "1d56") || strings.Contains(s, "202020202020202020202020202020202020202020202020202020202020202020202020202020200d0a")  {
+              qrCode = "" /* if found Paper Cut then remove QRcode */
+            }
+          } else {
+            nb, err := out.Write(buf) /* if not QRcode Scan then print */
+            if err != nil {
+              log.Printf("[x] write error occurred", err)
+            } else {
+              log.Printf("[-] write %s %d bytes %s", port2, nb, hex.EncodeToString(buf))
+            }
+          }
+        }
       }
     }
     buf = nil
@@ -420,12 +481,16 @@ func RunLPT(in io.ReadWriteCloser, port1 string, port2 string) {
       if n > 0 {
         buf = buf[:n]
         log.Printf("[-] read %s  %d bytes, %s", port1, n, hex.EncodeToString(buf))
-        out, _ := os.OpenFile(port2, os.O_RDWR, 0666)
-        nb, _ := out.Write(buf)
-        out.Sync()
-        out.Close()
-        log.Printf("[-] write %s %d bytes %s", port2, nb, hex.EncodeToString(buf))
-        PostReceipt(buf)
+        if wsHost != "" && qrCode != "" {
+          PostReceipt(buf)
+          qrCode = ""
+        } else {
+          out, _ := os.OpenFile(port2, os.O_RDWR, 0666)
+          nb, _ := out.Write(buf)
+          log.Printf("[-] write %s %d bytes %s", port2, nb, hex.EncodeToString(buf))
+          out.Sync()
+          out.Close()
+        }
       }
     }
     buf = nil
@@ -455,6 +520,10 @@ func SignIn() {
 		var result map[string]interface{}
 		json.Unmarshal([]byte(s), &result)
 		if result["code"].(float64) != 200 {
+      u := httpHost + "/pos/sign-up/" + macAddr
+      log.Printf("[-] browser: %s", u)
+      open.Run(u)
+      os.Exit(0)
 			/*
 				go func() {
 					debug := true
@@ -532,6 +601,38 @@ func HeartBeat() {
 	}()
 }
 
+func RunQR(in io.ReadWriteCloser, port1 string) {
+  color.Set(color.FgGreen)
+  log.Printf("[v] thread RunQR (%s)", port1)
+  color.Set(color.FgWhite)
+
+  for {
+    buf := make([]byte, 32768)
+    n, err := in.Read(buf)
+
+    if err != nil {
+      if err != io.EOF {
+        color.Set(color.FgRed)
+        log.Printf("[x] Reading from serial port: ", err)
+        color.Set(color.FgWhite)
+      }
+    } else {
+      if n > 0 {
+        buf = buf[:n]
+        log.Printf("[-] read %s  %d bytes, %s", port1, n, buf)
+        qrCode += string(buf)
+
+        if len(qrCode) >= 9 {
+          qrCode = strings.Replace(qrCode, "\n", "", -1)
+          qrCode = strings.Replace(qrCode, "\r", "", -1)
+          IssueQRcode (qrCode)
+        }
+      }
+    }
+    buf = nil
+  }
+}
+
 func doPosHeartBeat(t time.Time) {
 	b, _ := json.Marshal(License{Mac: macAddr, Rcn: rcnNum, Ver: version})
 	resp, err := http.Post(httpHost+"/pos/heartbeat/", "application/json", bytes.NewBuffer(b))
@@ -565,6 +666,7 @@ func PosHeartBeat() {
 		}
 	}()
 }
+
 
 func WS() {
 	color.Set(color.FgGreen)
@@ -634,6 +736,9 @@ var baudRate string
 var Printer string
 var Port1 string
 var Port2 string
+var qrPort string
+var qrRate string
+var qrCode string = ""
 var Token string
 var heartBeat string
 var intChTimeout string
@@ -654,7 +759,9 @@ var platform string = ""
 func getConfig() bool {
 	err := godotenv.Load("c:\\hc\\.env")
 	if err != nil {
-		log.Printf("Error loading C:\\hc\\.env file")
+		color.Set(color.FgRed)
+		log.Printf("[x] Error loading C:\\hc\\.env file")
+		color.Set(color.FgWhite)
 		return false
 	}
 	//httpHost = "https://smart.hancomlifecare.com"
@@ -665,8 +772,15 @@ func getConfig() bool {
 		color.Set(color.FgWhite)
 		httpHost = "https://smart.hancomlifecare.com"
 	}
-	wsHost = os.Getenv("WS")
 	servName = os.Getenv("SERVICE")
+  if servName == "" {
+    servName = "RECEIPT"
+  }
+	wsHost = os.Getenv("WS")
+  if wsHost == "" {
+    servName = "BOOKPOINT"
+  }
+
 	deptName = os.Getenv("NAME")
 	uidNum = os.Getenv("UID")
 	rcnNum = os.Getenv("RCN")
@@ -677,6 +791,8 @@ func getConfig() bool {
 	Printer = os.Getenv("PRINTER")
 	Port1 = os.Getenv("PORT1")
 	Port2 = os.Getenv("PORT2")
+	qrPort = os.Getenv("QRPORT")
+	qrRate = os.Getenv("QRRATE")
 	heartBeat = os.Getenv("HEARTBEAT")
 	intChTimeout = os.Getenv("INTERCHTMO")
 	if intChTimeout == "" {
@@ -693,14 +809,18 @@ func getConfig() bool {
 	bnkRepo = os.Getenv("BNK_REPO")
 	bnkPrefix = os.Getenv("BNK_PREFIX")
 	ipAddr = utils.GetOutboundIP().String()
+  if ipAddr == "0.0.0.0" {
+		color.Set(color.FgRed)
+		log.Printf("[x] Network interface not running!")
+		color.Set(color.FgWhite)
+		return false
+  }
 	macAddr = utils.GetOutboundMac(ipAddr)
 
+	log.Printf("[*] Service                  : %s", servName)
 	log.Printf("[*] Host                     : %s", httpHost)
 	if wsHost != "" {
 		log.Printf("[*] WS                       : %s", wsHost)
-	}
-	if servName != "" {
-		log.Printf("[*] Service                  : %s", servName)
 	}
 	if deptName != "" {
 		log.Printf("[*] Name                     : %s", deptName)
@@ -713,6 +833,10 @@ func getConfig() bool {
 	log.Printf("[*] Printer                  : %s", Printer)
 	log.Printf("[*] Port1                    : %s", Port1)
 	log.Printf("[*] Port2 (POS)              : %s", Port2)
+  if qrPort != "" {
+	  log.Printf("[*] QR Scaner                : %s", qrPort)
+	  log.Printf("[*] QR Scaner Baudrate       : %s", qrRate)
+  }
 	log.Printf("[*] HeartBeat                : %s", heartBeat)
 	log.Printf("[*] Inter Character Timeout  : %s", intChTimeout)
 	log.Printf("[*] Minimum Read Size        : %s", minReadSize)

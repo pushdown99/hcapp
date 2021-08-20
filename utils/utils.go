@@ -54,7 +54,11 @@ func GetAttr(obj interface{}, fieldName string) reflect.Value {
 */
 
 func GetOutboundIP() net.IP {
-	conn, _ := net.Dial("udp", "8.8.8.8:80")
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return net.IPv4(0,0,0,0)
+	}
+  
 	defer conn.Close()
 	return conn.LocalAddr().(*net.UDPAddr).IP
 }

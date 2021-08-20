@@ -213,9 +213,9 @@ func setCommTimeouts(h syscall.Handle, options OpenOptions) error {
 	//timeoutConstant := uint32(round(float64(options.InterCharacterTimeout)))
 	readIntervalTimeout := uint32(options.MinimumReadSize)
 
-  fmt.Println("===============================================================================================================");
-  fmt.Println("InterCharacterTimeout:", options.InterCharacterTimeout, ", MinimumReadSize", options.MinimumReadSize, options);
-  fmt.Println("timeoutConstant(InterCharacterTimeout):", timeoutConstant, ", readIntervalTimeout(MinimumReadSize)", readIntervalTimeout);
+  //fmt.Println("===============================================================================================================");
+  //fmt.Println("InterCharacterTimeout:", options.InterCharacterTimeout, ", MinimumReadSize", options.MinimumReadSize, options);
+  //fmt.Println("timeoutConstant(InterCharacterTimeout):", timeoutConstant, ", readIntervalTimeout(MinimumReadSize)", readIntervalTimeout);
 
   // timeoutConstant= options.InterCharacterTimeout
   // readIntervalTimeout = options.MinimumReadSize
@@ -225,24 +225,24 @@ func setCommTimeouts(h syscall.Handle, options OpenOptions) error {
 		timeouts.ReadIntervalTimeout = MAXDWORD
 		timeouts.ReadTotalTimeoutMultiplier = MAXDWORD
 		timeouts.ReadTotalTimeoutConstant = timeoutConstant
-    fmt.Println("A:");
+    //fmt.Println("A:");
 	} else if readIntervalTimeout > 0 {
 		// Assume we want to block and wait for input.
 		timeouts.ReadIntervalTimeout = readIntervalTimeout
 		timeouts.ReadTotalTimeoutMultiplier = 1
 		timeouts.ReadTotalTimeoutConstant = 1
-    fmt.Println("B:");
+    //fmt.Println("B:");
 	} else {
 		// No idea what we intended, use defaults
 		// default config does what it did before.
 		timeouts.ReadIntervalTimeout = MAXDWORD
 		timeouts.ReadTotalTimeoutMultiplier = MAXDWORD
 		timeouts.ReadTotalTimeoutConstant = MAXDWORD - 1
-    fmt.Println("C:");
+    //fmt.Println("C:");
 	}
-  fmt.Println("Timeouts: ", timeouts);
-  fmt.Println("Expected Timeout = ", (1000*timeouts.WriteTotalTimeoutMultiplier)+timeouts.ReadTotalTimeoutConstant, " msec (interval timeout:", timeouts.ReadIntervalTimeout, " msec)");
-  fmt.Println("");
+  //fmt.Println("Timeouts: ", timeouts);
+  //fmt.Println("Expected Timeout = ", (1000*timeouts.WriteTotalTimeoutMultiplier)+timeouts.ReadTotalTimeoutConstant, " msec (interval timeout:", timeouts.ReadIntervalTimeout, " msec)");
+  //fmt.Println("");
 
 	/*
 			Empirical testing has shown that to have non-blocking IO we need to set:
